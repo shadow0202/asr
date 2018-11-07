@@ -7,12 +7,10 @@
 import base64
 import random
 import wave
-from re import DEBUG
 import time
 import json
 import urllib
 import hashlib
-
 import os
 from sys import argv
 

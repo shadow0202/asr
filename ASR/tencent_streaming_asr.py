@@ -17,7 +17,6 @@ import hashlib
 import os
 from sys import argv
 import requests
-from websocket._core import create_connection
 
 
 def urlencode(args):
