@@ -1,68 +1,121 @@
-# -*- coding:utf-8 -*-
+# -*- coding: utf-8 -*-
+"""
+# @Author  : huxw 
+# @Update  : 2018/10/23 16:35 
+# @Software: PyCharm
+"""
 import base64
-import hashlib
 import random
-import string
-import urllib
-import requests
+import wave
+from re import DEBUG
 import time
+import json
+import urllib
+import hashlib
 
-# 单次请求中，语音时长上限15秒。
-# 只支持中文普通话语音识别，后续开放更多语种的识别能力。
+import os
+from sys import argv
 
-
-# 申请账号后分配的appid和appkey，都是起一个对用户以及所使用模块的标识作用
-appid = 1106965956
-appkey = 'p2gf4Ji1cXxwKPCF'
-
-# 读取音频文件
-d = open(r'C:\Users\huxw\Desktop\222.wav','rb').read()
-
-# 组装调用接口时，需要携带的信息。
-def get_params():
-    #请求时间戳
-    timestamp = int(time.time())
-    #随机字符串
-    nonce_str = ''.join(random.sample(string.ascii_letters + string.digits,16))
-
-    #请求接口时候需要携带的信息
-    params = {
-        'app_id':appid,
-        "format": 2,    # 语音格式对应的标识
-                        # PCM	1
-                        # WAV	2
-                        # AMR	3
-                        # SILK	4
-        "rate": 16000,
-        "speech": base64.b64encode(d),  # base64编码
-        "time_stamp": timestamp,
-        "nonce_str": nonce_str,
-        #'sign': '',
-    }
-
-    # get_token  先获取调接口时需要验证的sign， 这个sign在他们网站上已经给出获取的步骤
-    # 1、字典排序
-    sort_dict = sorted(params.items(),key=lambda item:item[0],reverse=False)
-    # 2、尾部添加appkey
-    sort_dict.append(('app_key',appkey))
-    # 3、urlcode编码
-    rawtext = urllib.urlencode(sort_dict).encode()
-    # 4、md5加密计算
-    sha = hashlib.md5()
-    sha.update(rawtext)
-    md5text = sha.hexdigest().upper()
-
-    # 然后将sign添加到params
-    params['sign'] = md5text
-    return params
+import requests
 
 
-#发出请求
-url = "https://api.ai.qq.com/fcgi-bin/aai/aai_asr"
-heads = {}
-heads[
-    'User-Agent'] = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.84 Safari/537.36'
-result = requests.post(url,headers = heads,data=get_params())
-data_result = result.json()
-print data_result['data']['text']
+def urlencode(args):
+    tuples = [(k, args[k]) for k in sorted(args.keys()) if args[k]]
+    query_str = urllib.urlencode(tuples)
+    return query_str
 
+def signify(args, app_key):
+    query_str = urlencode(args)
+    query_str = query_str + '&app_key=' + app_key
+    signiture = md5(query_str)
+    return signiture
+
+
+def md5(string):
+    md = hashlib.md5()
+    md.update(string)
+    md5 = md.hexdigest().upper()
+    return md5
+
+
+def http_post(api_url, args):
+    resp = requests.post(url=api_url, data=args)
+    resp = json.loads(resp.text)
+    return resp
+
+class BaseASR(object):
+    ext2idx = {'pcm': '1', 'wav': '2', 'amr': '3', 'slk': '4'}
+
+    def __init__(self, api_url, app_id, app_key):
+        self.api_url = api_url
+        self.app_id = app_id
+        self.app_key = app_key
+
+    def stt(self, audio_file, ext, rate):
+        print "异常"
+
+class BasicASR(BaseASR):
+    """ Online ASR from Tencent
+    https://ai.qq.com/doc/aaiasr.shtml
+    """
+    def __init__(self, api_url='https://api.ai.qq.com/fcgi-bin/aai/aai_asr',
+                 app_id=1106965956, app_key='p2gf4Ji1cXxwKPCF'):
+        super(BasicASR, self).__init__(api_url, app_id, app_key)
+
+    def stt(self, audio_file, ext='wav', rate=16000):
+        if ext == 'wav':
+            wf = wave.open(audio_file)
+            nf = wf.getnframes()
+            audio_data = wf.readframes(nf)
+            wf.close()
+        else:
+            raise Exception("Unsupport audio file format!")
+
+        args = {
+            'app_id': self.app_id,
+            'time_stamp': str(int(time.time())),
+            'nonce_str': '%.x' % random.randint(1048576, 104857600),
+            'format': self.ext2idx[ext],
+            'rate': str(rate),
+            'speech': base64.b64encode(audio_data),
+        }
+
+        signiture = signify(args, self.app_key)
+        args['sign'] = signiture
+        resp = http_post(self.api_url, args)
+        text = resp['data']['text'].encode('utf-8')
+
+        # if DEBUG:
+        #     print('msg: %s, ret: %s, format: %s' %
+        #           (resp['msg'], resp['ret'], resp['data']['format']))
+
+        return text
+
+def file_name(file_dir):
+    for root, dirs, files in os.walk(file_dir):
+        return files
+
+
+def main():
+    asr_engine = BasicASR()
+    wav_path = argv[1]
+    res_path = argv[2]
+    l = file_name(wav_path)
+    txt_file = open(res_path,'a')
+    for audio_file in l:
+        try:
+            text = asr_engine.stt(wav_path + '\\' + audio_file)
+            print (wav_path + '\\' + audio_file)
+            print(text)
+            txt_file.write(wav_path + '\\' + audio_file + "###" + text + '\n')
+            print('------------------------------------------')
+        except Exception as e:
+            print (wav_path + '\\' + audio_file)
+            print('请求超时', e)
+            txt_file.write(wav_path + '\\' + audio_file + "###" + '请求超时' + '\n')
+            print('------------------------------------------')
+
+        time.sleep(0.5)
+
+if __name__ == '__main__':
+    main()

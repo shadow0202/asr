@@ -3,20 +3,26 @@
 # @Author  : huxw 
 # @Update  : 2018/10/23 16:44 
 # @Software: PyCharm
+
+使用方法：需要穿两个参数，第一个为音频文件夹路径，第二个是结果存储路径
+
 """
 import base64
 import random
+import urllib
 import wave
 import time
 import json
-import urllib
 import hashlib
 import os
+from sys import argv
 import requests
+from websocket._core import create_connection
+
 
 def urlencode(args):
     tuples = [(k, args[k]) for k in sorted(args.keys()) if args[k]]
-    query_str = urllib.urlencode(tuples)
+    query_str = urllib.parse.urlencode(tuples)
     return query_str
 
 def signify(args, app_key):
@@ -27,7 +33,7 @@ def signify(args, app_key):
 
 def md5(string):
     md = hashlib.md5()
-    md.update(string)
+    md.update(string.encode("utf8"))
     md5 = md.hexdigest().upper()
     return md5
 
@@ -50,7 +56,7 @@ class BaseASR(object):
         self.app_key = app_key
 
     def stt(self, audio_file, ext, rate):
-        print "异常"
+        print ("异常")
 
 class BasicStreamASR(BaseASR):
     """ Online ASR from Tencent AI Lab
@@ -100,7 +106,6 @@ class BasicStreamASR(BaseASR):
             if(usetime <= 200):
                 time.sleep((200 - usetime) / 1000)
 
-
             # TODO QPS限制，待申请企业账号，消除QPS限制，然后统计时长。
             time.sleep(1)
 
@@ -113,22 +118,35 @@ class BasicStreamASR(BaseASR):
         return resp['data']['speech_text'].encode('utf-8'),total_useTime
 
 
-if __name__ == '__main__':
+def main():
     asr_engine = BasicStreamASR()
-    l = file_name(r'C:\Users\huxw\Desktop\ch')
+    wav_path = argv[1]
+    res_path = argv[2]
+    l = file_name(wav_path)
     # 追加格式化文本结果
-    txt_file = open("C:\\Users\\huxw\\Desktop\\tecent_streaming_asr.txt",'a')
+    txt_file = open(res_path,'a')
     for audio_file in l:
-        text,usertime = asr_engine.stt('C:\\Users\\huxw\\Desktop\\ch\\'+audio_file)
-        print '------------------------------------------'
-        print 'C:\\Users\\huxw\\Desktop\\ch\\'+audio_file
-        # 记录文本结果和识别时长
-        res_file = open("C:\\Users\\huxw\\Desktop\\tencent\\" + audio_file.replace("wav","txt"),'w')
-        print "C:\\Users\\huxw\\Desktop\\tencent\\" + audio_file.replace("wav","txt")
-        res_file.write(text + '\n' + str(usertime))
-        print(text)
-        txt_file.write("C:\\Users\\huxw\\Desktop\\tencent\\" + audio_file +"###"+text+'\n')
-        print '------------------------------------------'
-        res_file.close()
+        try:
+            text,usertime = asr_engine.stt(wav_path +'\\'+ audio_file)
+            print(wav_path +'\\'+ audio_file)
+            # 记录文本结果和识别时长
+            # res_file = open("C:\\Users\\huxw\\Desktop\\tencent\\" + audio_file.replace("wav","txt"),'w')
+            # print "C:\\Users\\huxw\\Desktop\\tencent\\" + audio_file.replace("wav","txt")
+            # res_file.write(text + '\n' + str(usertime))
+            text = bytes.decode(text)
+            print(text)
+            txt_file.write(wav_path +'\\'+ audio_file +"###"+ text +'\n')
+            print('------------------------------------------')
+        except Exception as e:
+            print (wav_path + '\\' + audio_file)
+            print('请求超时',e)
+            txt_file.write(wav_path +'\\'+ audio_file + "###" + '请求超时' + '\n')
+            print('------------------------------------------')
+
     txt_file.close()
+
+
+if __name__ == '__main__':
+    main()
+
 
